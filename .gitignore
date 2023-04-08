@@ -1,0 +1,7 @@
+*.hex
+hex/
+
+Output/
+*.emSession
+
+.vscode/
