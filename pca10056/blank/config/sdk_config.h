@@ -38,7 +38,7 @@
  *
  */
 
-
+#define HARDFAULT_HANDLER_ENABLED 1
 
 #ifndef SDK_CONFIG_H
 #define SDK_CONFIG_H
