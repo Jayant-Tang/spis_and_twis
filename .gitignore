@@ -1,7 +1,17 @@
 *.hex
 hex/
 
+# ses
 Output/
 *.emSession
+*.jlink
+
+# gcc
+build*/
+_build*/
+
+#ozone
+*jdebug*
+
 
 .vscode/
