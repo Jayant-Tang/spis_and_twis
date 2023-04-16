@@ -51,10 +51,9 @@
 #define SPIS_INSTANCE 1 /**< SPIS instance index. */
 static const nrf_drv_spis_t spis = NRF_DRV_SPIS_INSTANCE(SPIS_INSTANCE);/**< SPIS instance. */
 
-#define TEST_STRING "Nordic"
-static uint8_t       m_tx_buf[] = TEST_STRING;           /**< TX buffer. */
-static uint8_t       m_rx_buf[sizeof(TEST_STRING) + 1];    /**< RX buffer. */
-static const uint8_t m_length = sizeof(m_tx_buf);        /**< Transfer length. */
+static uint8_t       m_tx_buf[20] = {0};
+static uint8_t       m_rx_buf[20] = {0};
+static const uint8_t m_length = sizeof(m_tx_buf);
 
 static volatile bool spis_xfer_done; /**< Flag used to indicate that SPIS instance completed the transfer. */
 
@@ -68,7 +67,7 @@ void spis_event_handler(nrf_drv_spis_event_t event)
     if (event.evt_type == NRF_DRV_SPIS_XFER_DONE)
     {
         spis_xfer_done = true;
-        NRF_LOG_INFO(" Transfer completed. Received: %s",(uint32_t)m_rx_buf);
+        NRF_LOG_HEXDUMP_INFO(m_rx_buf,sizeof(m_rx_buf));
     }
 }
 
@@ -79,19 +78,20 @@ int main(void)
     // (when the CPU is in sleep mode).
     NRF_POWER->TASKS_CONSTLAT = 1;
 
-    bsp_board_init(BSP_INIT_LEDS);
+    //bsp_board_init(BSP_INIT_LEDS);
 
     APP_ERROR_CHECK(NRF_LOG_INIT(NULL));
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 
-    NRF_LOG_INFO("SPIS example");
+    NRF_LOG_INFO("SPIS and TWIS example");
+    NRF_LOG_FLUSH();
 
     nrf_drv_spis_config_t spis_config = NRF_DRV_SPIS_DEFAULT_CONFIG;
-    spis_config.csn_pin               = APP_SPIS_CS_PIN;
-    spis_config.miso_pin              = APP_SPIS_MISO_PIN;
-    spis_config.mosi_pin              = APP_SPIS_MOSI_PIN;
-    spis_config.sck_pin               = APP_SPIS_SCK_PIN;
-
+    spis_config.csn_pin               = 3;
+    spis_config.sck_pin               = 4;
+    spis_config.mosi_pin              = 28;
+    spis_config.miso_pin              = 29;
+    
     APP_ERROR_CHECK(nrf_drv_spis_init(&spis, &spis_config, spis_event_handler));
 
     while (1)
@@ -108,6 +108,6 @@ int main(void)
 
         NRF_LOG_FLUSH();
 
-        bsp_board_led_invert(BSP_BOARD_LED_0);
+         //bsp_board_led_invert(BSP_BOARD_LED_0);
     }
 }
