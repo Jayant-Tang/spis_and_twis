@@ -39,6 +39,7 @@
  */
 #include "sdk_config.h"
 #include "nrf_drv_spis.h"
+#include "nrf_drv_twis.h"
 #include "nrf_gpio.h"
 #include "boards.h"
 #include "app_error.h"
@@ -48,14 +49,22 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
-#define SPIS_INSTANCE 1 /**< SPIS instance index. */
+
+// SPIS
+#define SPIS_INSTANCE 2 /**< SPIS instance index. */
 static const nrf_drv_spis_t spis = NRF_DRV_SPIS_INSTANCE(SPIS_INSTANCE);/**< SPIS instance. */
+
 
 static uint8_t       m_tx_buf[20] = {0};
 static uint8_t       m_rx_buf[20] = {0};
 static const uint8_t m_length = sizeof(m_tx_buf);
 
 static volatile bool spis_xfer_done; /**< Flag used to indicate that SPIS instance completed the transfer. */
+
+// TWIS
+#define TWIS_INSTANCE 1 /**< SPIS instance index. */
+static const nrf_drv_twis_t m_twis = NRF_DRV_TWIS_INSTANCE(TWIS_INSTANCE);
+static uint8_t m_twis_buf[20] = {0};
 
 /**
  * @brief SPIS user event handler.
@@ -71,6 +80,37 @@ void spis_event_handler(nrf_drv_spis_event_t event)
     }
 }
 
+static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
+{
+    switch (p_event->type)
+    {
+    case TWIS_EVT_READ_REQ:
+        if(p_event->data.buf_req){
+            nrf_drv_twis_tx_prepare(&m_twis, m_twis_buf, sizeof(m_twis_buf));
+        }
+        break;
+    case TWIS_EVT_READ_DONE:
+        NRF_LOG_INFO("TWIS_EVT_READ_DONE");
+        break;
+    case TWIS_EVT_WRITE_REQ:
+        if(p_event->data.buf_req){
+            nrf_drv_twis_rx_prepare(&m_twis, m_twis_buf, sizeof(m_twis_buf));
+        }
+        break;
+    case TWIS_EVT_WRITE_DONE:
+        NRF_LOG_INFO("TWIS_EVT_WRITE_DONE")
+        break;
+
+    case TWIS_EVT_READ_ERROR:
+    case TWIS_EVT_WRITE_ERROR:
+    case TWIS_EVT_GENERAL_ERROR:
+        // m_error_flag = true;
+        break;
+    default:
+        break;
+    }
+}
+
 int main(void)
 {
     // Enable the constant latency sub power mode to minimize the time it takes
@@ -80,6 +120,8 @@ int main(void)
 
     //bsp_board_init(BSP_INIT_LEDS);
 
+
+    // init spis
     APP_ERROR_CHECK(NRF_LOG_INIT(NULL));
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 
@@ -93,6 +135,29 @@ int main(void)
     spis_config.miso_pin              = 29;
     
     APP_ERROR_CHECK(nrf_drv_spis_init(&spis, &spis_config, spis_event_handler));
+
+    // init twis
+    const nrf_drv_twis_config_t config =
+    {
+        .addr               = {0xbe, 0xef},
+        .scl                = 33, // P1.01
+        .scl_pull           = NRF_GPIO_PIN_PULLUP,
+        .sda                = 34, // P1.02
+        .sda_pull           = NRF_GPIO_PIN_PULLUP,
+        .interrupt_priority = APP_IRQ_PRIORITY_HIGH
+    };
+
+    do
+    {
+        int ret = nrf_drv_twis_init(&m_twis, &config, twis_event_handler);
+        if (NRF_SUCCESS != ret)
+        {
+            break;
+        }
+
+        nrf_drv_twis_enable(&m_twis);
+    }while (0);
+
 
     while (1)
     {
