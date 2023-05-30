@@ -125,6 +125,8 @@ void spis_task()
     APP_ERROR_CHECK(nrf_drv_spis_buffers_set(&spis, m_tx_buf, m_length, m_rx_buf, m_length));
 }
 
+static volatile bool twis_xfer_done = false;
+
 static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
 {
     switch (p_event->type)
@@ -135,7 +137,8 @@ static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
         }
         break;
     case TWIS_EVT_READ_DONE:
-        NRF_LOG_INFO("TWIS_EVT_READ_DONE");
+        NRF_LOG_INFO("TWIS_EVT_READ_DONE:");
+        NRF_LOG_HEXDUMP_INFO(m_twis_buf, p_event->data.tx_amount);
         break;
     case TWIS_EVT_WRITE_REQ:
         if(p_event->data.buf_req){
@@ -143,7 +146,8 @@ static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
         }
         break;
     case TWIS_EVT_WRITE_DONE:
-        NRF_LOG_INFO("TWIS_EVT_WRITE_DONE")
+        NRF_LOG_INFO("TWIS_EVT_WRITE_DONE:");
+        NRF_LOG_HEXDUMP_INFO(m_twis_buf, p_event->data.rx_amount);
         break;
 
     case TWIS_EVT_READ_ERROR:
@@ -154,6 +158,8 @@ static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
     default:
         break;
     }
+
+    twis_xfer_done = true;
 }
 
 int main(void)
@@ -174,20 +180,20 @@ int main(void)
     NRF_LOG_FLUSH();
 
     nrf_drv_spis_config_t spis_config = NRF_DRV_SPIS_DEFAULT_CONFIG;
-    spis_config.csn_pin               = 3;
-    spis_config.sck_pin               = 4;
-    spis_config.mosi_pin              = 28;
-    spis_config.miso_pin              = 29;
+    spis_config.csn_pin               = 32+12; // P1.12 
+    spis_config.sck_pin               = 32+13; // P1.13
+    spis_config.mosi_pin              = 32+14; // P1.14
+    spis_config.miso_pin              = 32+15; // P1.15
     
     APP_ERROR_CHECK(nrf_drv_spis_init(&spis, &spis_config, spis_event_handler));
 
     // init twis
     const nrf_drv_twis_config_t config =
     {
-        .addr               = {0xbe, 0xef},
-        .scl                = 33, // P1.01
+        .addr               = {0xef, 0xbe},
+        .scl                = 2, // P0.02
         .scl_pull           = NRF_GPIO_PIN_PULLUP,
-        .sda                = 34, // P1.02
+        .sda                = 26, // P0.26
         .sda_pull           = NRF_GPIO_PIN_PULLUP,
         .interrupt_priority = APP_IRQ_PRIORITY_HIGH
     };
@@ -197,6 +203,7 @@ int main(void)
         int ret = nrf_drv_twis_init(&m_twis, &config, twis_event_handler);
         if (NRF_SUCCESS != ret)
         {
+            NRF_LOG_INFO("TWIS_INIT_ERROR: %d", ret);
             break;
         }
 
@@ -206,15 +213,18 @@ int main(void)
 
     while (1)
     {
-
         spis_task();
         NRF_LOG_FLUSH();
+        
+        twis_xfer_done = false;
 
-        while (!spis_xfer_done)
+        // when wakeup from interrupt, check if the event is for SPIS or TWIS
+        // if not, go to sleep again
+        while (!spis_xfer_done && !twis_xfer_done)
         {
             __WFE();
         }
 
-         //bsp_board_led_invert(BSP_BOARD_LED_0);
+        //  bsp_board_led_invert(BSP_BOARD_LED_0);
     }
 }
