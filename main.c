@@ -58,8 +58,9 @@ static const nrf_drv_spis_t spis = NRF_DRV_SPIS_INSTANCE(SPIS_INSTANCE);/**< SPI
 static uint8_t       m_tx_buf[20] = {0};
 static uint8_t       m_rx_buf[20] = {0};
 static const uint8_t m_length = sizeof(m_tx_buf);
+static uint8_t m_rx_length = {0};
 
-static volatile bool spis_xfer_done; /**< Flag used to indicate that SPIS instance completed the transfer. */
+static volatile bool spis_xfer_done = false; /**< Flag used to indicate that SPIS instance completed the transfer. */
 
 // TWIS
 #define TWIS_INSTANCE 1 /**< SPIS instance index. */
@@ -76,8 +77,52 @@ void spis_event_handler(nrf_drv_spis_event_t event)
     if (event.evt_type == NRF_DRV_SPIS_XFER_DONE)
     {
         spis_xfer_done = true;
-        NRF_LOG_HEXDUMP_INFO(m_rx_buf,sizeof(m_rx_buf));
+        m_rx_length = event.rx_amount;
+        NRF_LOG_INFO("SPI_DATA_RECEIVED:");
+        NRF_LOG_HEXDUMP_INFO(m_rx_buf, event.rx_amount);
     }
+}
+
+enum custom_cmd_t {
+    // FLASH_WRITE = 0x01,
+    // FLASH_READ = 0x02,
+    SPIM_WRITE = 0x03,
+    SPIM_READ = 0x04,
+    TWI_WRITE = 0x05,
+    TWI_READ = 0x06,
+};
+
+void spis_task()
+{
+    static uint8_t spis_storage[20] = {0};
+
+    if (!spis_xfer_done){
+        APP_ERROR_CHECK(nrf_drv_spis_buffers_set(&spis, m_tx_buf, m_length, m_rx_buf, m_length));
+        return;
+    }
+
+    uint8_t cmd = m_rx_buf[0];
+    uint8_t len = m_rx_buf[1];
+    uint8_t *data = &m_rx_buf[2];
+
+    switch(cmd){
+        case SPIM_WRITE:
+            if (len != m_rx_length - 2) {
+                NRF_LOG_WARNING("write len is not match! paylod_len=%d, len=%d", m_rx_length - 2, len);
+            }
+            memcpy(spis_storage, data, len);
+            break;
+        case SPIM_READ:
+            NRF_LOG_INFO("SPI_READ:");
+            NRF_LOG_HEXDUMP_INFO(spis_storage, len);
+            memcpy(m_tx_buf, spis_storage, len);
+            break;
+        default:
+            break;
+    }
+    memset(m_rx_buf, 0, m_length);
+    spis_xfer_done= false;
+    APP_ERROR_CHECK(nrf_drv_spis_buffers_set(&spis, m_tx_buf, m_length, m_rx_buf, m_length));
 }
 
 static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
@@ -161,17 +206,14 @@ int main(void)
 
     while (1)
     {
-        memset(m_rx_buf, 0, m_length);
-        spis_xfer_done = false;
 
-        APP_ERROR_CHECK(nrf_drv_spis_buffers_set(&spis, m_tx_buf, m_length, m_rx_buf, m_length));
+        spis_task();
+        NRF_LOG_FLUSH();
 
         while (!spis_xfer_done)
         {
             __WFE();
         }
-
-        NRF_LOG_FLUSH();
 
          //bsp_board_led_invert(BSP_BOARD_LED_0);
     }
